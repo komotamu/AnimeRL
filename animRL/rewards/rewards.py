@@ -34,8 +34,11 @@ class REWARDS:
         reward = torch.zeros(0).to(data['root_states'].device)
 
         root_states = data['root_states']
+        # Use relative height (subtract environment origins)
+        env_origins = data['env_origins']
+        current_height = root_states[:, 2] - env_origins[:, 2]
         target_height = motion_loader.get_root_pos(target_frames)[:, 2]
-        height_error = torch.abs(root_states[:, 2] - target_height)
+        height_error = torch.abs(current_height - target_height)
         height_error *= height_error > tolerance
         reward = torch.exp(-torch.square(height_error / sigma))
         return reward
@@ -106,10 +109,14 @@ class REWARDS:
 
         # ----------- TODO 1.1: implement the reward
         ee_global = data['ee_global']  # Current end effector positions (global)
-        target_ee_global = motion_loader.get_ee_global_from_frame(target_frames)  # Target end effector positions
+        target_ee_global = motion_loader.get_ee_pos_global(target_frames)  # Target end effector positions
+        
+        # Make positions relative to environment origins to handle different coordinate frames
+        env_origins = data['env_origins'].unsqueeze(1)  # (num_envs, 1, 3)
+        ee_relative = ee_global - env_origins  # Make current EE positions relative
         
         # Calculate end effector position error
-        ee_pos_error = torch.norm(ee_global - target_ee_global, dim=-1)  # Error per end effector
+        ee_pos_error = torch.norm(ee_relative - target_ee_global, dim=-1)  # Error per end effector
         ee_pos_error_total = torch.mean(ee_pos_error, dim=-1)  # Average across all end effectors
         
         ee_pos_error_total *= ee_pos_error_total > tolerance
